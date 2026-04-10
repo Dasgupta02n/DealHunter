@@ -17,6 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import uvicorn
 
+AMAZON_ASSOCIATE_TAG = "ss0ef2-21"
+
 from backend.database.models import Product, PriceHistory, ScrapeLog, get_session, init_db
 from backend.scraper.amazon_scraper import AmazonScraper, CATEGORY_URLS, scrape_all_categories
 
@@ -51,6 +53,19 @@ async def root():
         return HTMLResponse(content=f.read())
 
 
+def add_affiliate_tag(url: str) -> str:
+    if not url or "amazon.in" not in url:
+        return url
+    tag = f"tag={AMAZON_ASSOCIATE_TAG}"
+    if "tag=" in url:
+        return url  # Already has tag
+    return f"{url}&{tag}" if "?" in url else f"{url}?{tag}"
+
+def product_to_dict(p):
+    d = p.to_dict()
+    d["product_url"] = add_affiliate_tag(d.get("product_url", ""))
+    return d
+
 @app.get("/api/deals")
 async def get_deals(
     category: Optional[str] = None,
@@ -82,7 +97,7 @@ async def get_deals(
     total = query.count()
     products = query.offset(offset).limit(limit).all()
     
-    return {"total": total, "offset": offset, "limit": limit, "products": [p.to_dict() for p in products]}
+    return {"total": total, "offset": offset, "limit": limit, "products": [product_to_dict(p) for p in products]}
 
 
 @app.get("/api/deals/best")
@@ -92,7 +107,7 @@ async def get_best_deals(limit: int = Query(default=20, ge=1, le=100)):
         Product.highest_discount_ever != None,
         Product.current_price > 0,
     ).order_by(Product.highest_discount_ever.desc()).limit(limit).all()
-    return {"products": [p.to_dict() for p in products]}
+    return {"products": [product_to_dict(p) for p in products]}
 
 
 @app.get("/api/deals/new-low")
@@ -103,7 +118,7 @@ async def get_new_low_prices(limit: int = Query(default=20, ge=1, le=100)):
         Product.current_price > 0,
         Product.lowest_price_date != None,
     ).order_by(Product.lowest_price_date.desc()).limit(limit).all()
-    return {"products": [p.to_dict() for p in products]}
+    return {"products": [product_to_dict(p) for p in products]}
 
 
 @app.get("/api/categories")

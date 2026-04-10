@@ -16,6 +16,9 @@ from .proxy_manager import proxy_manager
 from ..database.models import Product, PriceHistory, ScrapeLog, get_session
 
 
+# Affiliate tag for Amazon Associates
+AMAZON_ASSOCIATE_TAG = "ss0ef2-21"
+
 CATEGORY_URLS = {
     "Shoes": "https://www.amazon.in/s?i=shoes&rh=n%3A2454168031&fs=true",
     "Beauty": "https://www.amazon.in/s?i=beauty&rh=n%3A1350386031&fs=true",
@@ -193,9 +196,11 @@ class AmazonScraper:
             is_best_seller = "best seller" in elem.text.lower()
             is_amazon_choice = "amazon choice" in elem.text.lower()
             
-            # URL
+            # URL with affiliate tag
             url_elem = elem.select_one("h2 a")
             product_url = f"https://www.amazon.in{url_elem.get('href')}" if url_elem else ""
+            if product_url and "tag=" not in product_url:
+                product_url = f"{product_url}&tag={AMAZON_ASSOCIATE_TAG}" if "?" in product_url else f"{product_url}?tag={AMAZON_ASSOCIATE_TAG}"
             
             if not name or not price:
                 return None
