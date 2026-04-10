@@ -1,0 +1,3 @@
+[railway]
+  [railway.deploy]
+    pythonVersion = "3.14"
