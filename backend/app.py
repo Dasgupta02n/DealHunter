@@ -150,6 +150,69 @@ async def trigger_scrape(category: Optional[str] = None):
     return {"status": "started", "category": category or "all"}
 
 
+@app.post("/api/product/add")
+async def add_product(product_data: dict):
+    """Receive product from local scraper and save to database"""
+    session = get_session()
+    try:
+        asin = product_data.get("asin")
+        if not asin:
+            raise HTTPException(status_code=400, detail="ASIN required")
+        
+        existing = session.query(Product).filter_by(asin=asin).first()
+        
+        if existing:
+            for key, val in product_data.items():
+                if hasattr(existing, key) and key not in ["asin", "first_seen"]:
+                    setattr(existing, key, val)
+            if product_data.get("price"):
+                if not existing.lowest_price_ever or product_data["price"] < existing.lowest_price_ever:
+                    existing.lowest_price_ever = product_data["price"]
+                    existing.lowest_price_date = datetime.utcnow()
+                if product_data.get("discount", 0) > (existing.highest_discount_ever or 0):
+                    existing.highest_discount_ever = product_data["discount"]
+                    existing.highest_discount_date = datetime.utcnow()
+            existing.last_updated = datetime.utcnow()
+        else:
+            product = Product(
+                asin=asin,
+                name=product_data.get("name", ""),
+                category=product_data.get("category", ""),
+                image_url=product_data.get("img", ""),
+                product_url=product_data.get("productUrl", ""),
+                current_price=product_data.get("price", 0),
+                current_mrp=product_data.get("mrp", product_data.get("price", 0)),
+                current_discount_percent=product_data.get("discount", 0),
+                rating=product_data.get("rating"),
+                review_count=product_data.get("reviews", 0),
+                is_prime=product_data.get("isPrime", False),
+                is_best_seller=product_data.get("isBestSeller", False),
+                is_amazon_choice=product_data.get("isAmazonChoice", False),
+                current_deal=product_data.get("discount", 0) >= 20,
+            )
+            product.lowest_price_ever = product_data.get("price")
+            product.lowest_price_date = datetime.utcnow()
+            product.highest_discount_ever = product_data.get("discount")
+            product.highest_discount_date = datetime.utcnow()
+            session.add(product)
+        
+        # Add price history
+        history = PriceHistory(
+            product_asin=asin,
+            mrp=product_data.get("mrp", product_data.get("price", 0)),
+            price=product_data.get("price", 0),
+            discount_percent=product_data.get("discount", 0),
+            deal=product_data.get("discount", 0) >= 20,
+        )
+        session.add(history)
+        session.commit()
+        
+        return {"status": "ok", "asin": asin}
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/product/{asin}")
 async def get_product(asin: str):
     session = get_session()
